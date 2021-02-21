@@ -10,7 +10,7 @@ interface IERC20 {
 }
 
 /// @dev brief interface for moloch dao v2 
-interface IMOLOCH { // brief interface for moloch dao v2
+interface IMOLOCH { 
     function submitProposal(
         address applicant,
         uint256 sharesRequested,
@@ -196,10 +196,10 @@ contract SushiMinion is ReentrancyGuard {
 }
 
 
-/*=====================================
+/*======================================
 WELCOME TO THE POOL PARTY (飲み会)
 __Developed by Peeps Democracy & LexDAO
-__USE AT YOUR OWN RISK__
+____USE AT YOUR OWN RISK
 ====================================*/
 /// SushiNomikai is the coolest party in town. You come in with some Sushi and stake (xSushi) to vote on party matters, like what food gets served. You can leave anytime with your fair share of party food. 
 contract SushiNomikai is ReentrancyGuard {
