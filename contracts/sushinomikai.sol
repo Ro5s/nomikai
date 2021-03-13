@@ -195,12 +195,11 @@ contract SushiMinion is ReentrancyGuard {
     receive() external payable {}
 }
 
-
-/*======================================
+/*=====================================
 WELCOME TO THE POOL PARTY (飲み会)
-__Developed by Peeps Democracy & LexDAO
-____USE AT YOUR OWN RISK
-====================================*/
+_Developed by Peeps Democracy & LexDAO
+__USE AT YOUR OWN RISK
+=====================================*/
 /// SushiNomikai is the coolest party in town. You come in with some Sushi and stake (xSushi) to vote on party matters, like what food gets served. You can leave anytime with your fair share of party food. 
 contract SushiNomikai is ReentrancyGuard {
     using SafeMath for uint256;
@@ -228,7 +227,7 @@ contract SushiNomikai is ReentrancyGuard {
     uint256 constant MAX_VOTING_PERIOD_LENGTH = 10**18; // maximum length of voting period
     uint256 constant MAX_GRACE_PERIOD_LENGTH = 10**18; // maximum length of grace period
     uint256 constant MAX_DILUTION_BOUND = 10**18; // maximum dilution bound
-    uint256 constant MAX_NUMBER_OF_SHARES_AND_LOOT = 10**18; // maximum number of shares that can be minted
+    uint256 constant MAX_NUMBER_OF_SHARES_AND_LOOT = uint256(-1); // maximum number of shares that can be minted
     uint256 constant MAX_TOKEN_WHITELIST_COUNT = 400; // maximum number of whitelisted tokens
     uint256 constant MAX_TOKEN_GUILDBANK_COUNT = 200; // maximum number of tokens with non-zero balance in guildbank
 
@@ -398,13 +397,9 @@ contract SushiNomikai is ReentrancyGuard {
     function makeSushiDeposit(uint256 tributeOffered) external nonReentrant {
         require(IERC20(sushiToken).transferFrom(msg.sender, address(this), tributeOffered), "sushi tribute failed");
         
-        address xSushi = xSushiToken;
-        
-        uint256 startBalance = IERC20(xSushi).balanceOf(address(this));
-        
-        ISushiBar(xSushi).enter(tributeOffered);
-        
-        uint256 shares = IERC20(xSushi).balanceOf(address(this)) - startBalance / 10**18;
+        uint256 startBalance = IERC20(xSushiToken).balanceOf(address(this));
+        ISushiBar(xSushiToken).enter(tributeOffered);
+        uint256 shares = IERC20(xSushiToken).balanceOf(address(this)) - startBalance;
         
         if (!members[msg.sender].exists) {
             members[msg.sender] = Member(msg.sender, shares, 0, true, 0, 0);
@@ -416,30 +411,27 @@ contract SushiNomikai is ReentrancyGuard {
         require(totalShares + shares <= MAX_NUMBER_OF_SHARES_AND_LOOT, "too many shares requested");
         totalShares += shares;
         
-        unsafeAddToBalance(GUILD, xSushi, tributeOffered);
+        unsafeAddToBalance(GUILD, xSushiToken, shares);
         
         emit MakeDeposit(msg.sender, tributeOffered, shares);
     }
     
     function makeXSushiDeposit(uint256 tributeOffered) external nonReentrant {
-        address xSushi = xSushiToken;
-        uint256 shares = tributeOffered / 10**18;
-
-        require(IERC20(xSushi).transferFrom(msg.sender, address(this), tributeOffered), "xSushi tribute failed");
+        require(IERC20(xSushiToken).transferFrom(msg.sender, address(this), tributeOffered), "xSushi tribute failed");
         
         if (!members[msg.sender].exists) {
-            members[msg.sender] = Member(msg.sender, shares, 0, true, 0, 0);
+            members[msg.sender] = Member(msg.sender, tributeOffered, 0, true, 0, 0);
             memberAddressByDelegateKey[msg.sender] = msg.sender;
         } else {
-            members[msg.sender].shares += shares;
+            members[msg.sender].shares += tributeOffered;
         }
         
-        require(totalShares + shares <= MAX_NUMBER_OF_SHARES_AND_LOOT, "too many shares requested");
-        totalShares += shares;
+        require(totalShares + tributeOffered <= MAX_NUMBER_OF_SHARES_AND_LOOT, "too many shares requested");
+        totalShares += tributeOffered;
         
-        unsafeAddToBalance(GUILD, xSushi, tributeOffered);
+        unsafeAddToBalance(GUILD, xSushiToken, tributeOffered);
         
-        emit MakeDeposit(msg.sender, tributeOffered, shares);
+        emit MakeDeposit(msg.sender, tributeOffered, tributeOffered);
     }
 
     /*****************
