@@ -27,10 +27,9 @@ interface IMOLOCH {
     function withdrawBalance(address token, uint256 amount) external;
 }
 
-/// @dev interface for sushi bar (`xSUSHI`) txs
+/// @dev brief interface for sushi bar (`xSUSHI`) entry
 interface ISushiBar { 
    function enter(uint256 _amount) external;
-   function leave(uint256 _share) external;
 }
 
 /// @dev helper for address type
@@ -111,8 +110,8 @@ contract ReentrancyGuard {
 
 /// @dev low-level caller, ETH holder, separate bank for moloch dao v2 - based on raid guild `Minion`
 contract SushiMinion is ReentrancyGuard {
-    address immutable sushiToken; // sushi token contract reference
-    IMOLOCH public moloch;
+    address immutable sushiToken; // internal sushi token contract reference
+    IMOLOCH public moloch; // parent moloch contract reference 
 
     mapping(uint256 => Action) public actions; // proposalId => Action
 
@@ -130,8 +129,8 @@ contract SushiMinion is ReentrancyGuard {
     constructor(address _moloch, address _sushiToken, address _xSushiToken, address _aave) public {
         moloch = IMOLOCH(_moloch);
         sushiToken = _sushiToken;
-        IERC20(_sushiToken).approve(_xSushiToken, uint256(-1)); // max approve sushi bar for sushi token entry
-        IERC20(_xSushiToken).approve(_aave, uint256(-1)); // max approve aave for deposit into aToken from underlying
+        IERC20(_sushiToken).approve(_xSushiToken, uint256(-1)); // max approve sushi bar for sushi token staking into xSushi
+        IERC20(_xSushiToken).approve(_aave, uint256(-1)); // max approve aave for deposit into aToken from underlying xSushi
     }
 
     function doWithdraw(address token, uint256 amount) external nonReentrant {
@@ -147,17 +146,15 @@ contract SushiMinion is ReentrancyGuard {
         // No calls to zero address allows us to check that proxy submitted
         // the proposal without getting the proposal struct from parent moloch
         require(actionTo != address(0), "invalid actionTo");
-        
-        address token = sushiToken;
 
         uint256 proposalId = moloch.submitProposal(
             address(this),
             0,
             0,
             0,
-            token,
+            sushiToken,
             0,
-            token,
+            sushiToken,
             details
         );
 
@@ -214,12 +211,12 @@ contract SushiNomikai is ReentrancyGuard {
     uint256 public proposalDeposit; // default = 10 ETH (~$1,000 worth of ETH at contract deployment)
     uint256 public dilutionBound; // default = 3 - maximum multiplier a YES voter will be obligated to pay in case of mass ragequit
     uint256 public processingReward; // default = 0.1 - amount of ETH to give to whoever processes a proposal
-    uint256 public summoningTime; // needed to determine the current period
-
-    address public depositToken; // deposit token contract reference; default = wETH
+    uint256 immutable summoningTime; // needed to determine the current period
+    
+    address payable public immutable sushiMinion; // sushi minion contract reference
+    address immutable depositToken; // deposit token contract reference; default = SUSHI
     address immutable sushiToken; // sushi token contract reference
     address immutable xSushiToken; // "sushi bar" xSushi token contract reference
-    address payable public immutable sushiMinion; // sushi minion contract reference
 
     // HARD-CODED LIMITS
     // These numbers are quite arbitrary; they are small enough to avoid overflows when doing calculations
@@ -235,7 +232,7 @@ contract SushiNomikai is ReentrancyGuard {
     // EVENTS
     // ***************
     event SummonComplete(address indexed summoner, address[] tokens, uint256 summoningTime, uint256 periodDuration, uint256 votingPeriodLength, uint256 gracePeriodLength, uint256 proposalDeposit, uint256 dilutionBound, uint256 processingReward);
-    event MakeDeposit(address indexed memberAddress, uint256 tributeOffered, uint256 indexed shares);
+    event MakeDeposit(address indexed memberAddress, uint256 tributeOffered, uint256 shares);
     event SubmitProposal(address indexed applicant, uint256 sharesRequested, uint256 lootRequested, uint256 tributeOffered, address tributeToken, uint256 paymentRequested, address paymentToken, string details, bool[6] flags, uint256 proposalId, address indexed delegateKey, address indexed memberAddress);
     event SponsorProposal(address indexed delegateKey, address indexed memberAddress, uint256 proposalId, uint256 proposalIndex, uint256 startingPeriod);
     event SubmitVote(uint256 proposalId, uint256 indexed proposalIndex, address indexed delegateKey, address indexed memberAddress, uint8 uintVote);
@@ -330,7 +327,6 @@ contract SushiNomikai is ReentrancyGuard {
         address[] memory _approvedTokens,
         address _sushiToken,
         address _xSushiToken,
-        address _aXSushiToken,
         address _aave,
         uint256 _periodDuration,
         uint256 _votingPeriodLength,
@@ -356,9 +352,6 @@ contract SushiNomikai is ReentrancyGuard {
         tokenWhitelist[_xSushiToken] = true;
         approvedTokens.push(_xSushiToken);
         
-        tokenWhitelist[_aXSushiToken] = true;
-        approvedTokens.push(_aXSushiToken);
-        
         // NOTE: move event up here, avoid stack too deep if too many approved tokens
         emit SummonComplete(_summoner, _approvedTokens, now, _periodDuration, _votingPeriodLength, _gracePeriodLength, _proposalDeposit, _dilutionBound, _processingReward);
 
@@ -369,7 +362,7 @@ contract SushiNomikai is ReentrancyGuard {
             approvedTokens.push(_approvedTokens[i]);
         }
         
-        IERC20(_sushiToken).approve(_xSushiToken, uint256(-1)); // max approve sushi bar for sushi token entry
+        IERC20(_sushiToken).approve(_xSushiToken, uint256(-1)); // max approve sushi bar for sushi token staking into xSushi
         
         SushiMinion minion = new SushiMinion(address(this), _sushiToken, _xSushiToken, _aave); // summon sushi minion contract 
         sushiMinion = address(minion); // record minion reference
@@ -577,7 +570,7 @@ contract SushiNomikai is ReentrancyGuard {
         emit SponsorProposal(msg.sender, memberAddress, proposalId, proposalQueue.length.sub(1), startingPeriod);
     }
 
-    // NOTE: In MolochV2 proposalIndex !== proposalId
+    // NOTE: In MolochV2 proposalIndex != proposalId
     function submitVote(uint256 proposalIndex, uint8 uintVote) external nonReentrant onlyDelegate {
         address memberAddress = memberAddressByDelegateKey[msg.sender];
         Member storage member = members[memberAddress];
